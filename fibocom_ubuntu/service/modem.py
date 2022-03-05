@@ -341,7 +341,7 @@ class Modem:
 def main():
     #logging.info('== START ==')
     test_config = {"SA":1, "BAND":5079, "APN":"internet"}
-    test_config2 = {"SA":1, "BAND":5078, "APN":"inventec.net"}
+    test_config2 = {"SA":1, "BAND":5078, "APN":"aaa.net"}
     modem = Modem()
     #modem.set_module_config(test_config2)
     #modem.update_info()
