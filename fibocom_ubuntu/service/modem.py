@@ -29,7 +29,7 @@ logger.addHandler(fh)
 ## END LOG SETTING
 API_PATH = BASE_DIR     
 AT_API_FILE = "sendAT.py"               
-HOST_PASSWORD="ccs@123"
+HOST_PASSWORD="aaa"
 FIBOCOM= "Fibocom"
 SIERRA = "Sierra"
 MMCLI_TIMEOUT = 4
