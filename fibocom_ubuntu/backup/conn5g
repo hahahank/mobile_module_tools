@@ -1,0 +1,175 @@
+#!/bin/bash
+CONFIG=1
+UPF1=true
+WIFI=false
+DHCP=false
+case "$CONFIG" in
+    0) echo "0"
+	UPF1=true;	WIFI=false;	DHCP=false
+	  ;;
+    1) echo "1"
+	UPF1=true;	WIFI=false;	DHCP=false
+	  ;;
+    2) echo "2"
+	UPF1=true;	WIFI=false;	DHCP=false
+	  ;;
+    3) echo "3"
+	UPF1=true;	WIFI=true;	DHCP=true
+	;;
+    4) echo "4"
+	UPF1=false;	WIFI=false;	DHCP=false
+	;;
+    5) echo "5"
+	UPF1=false;  WIFI=false; DHCP=false
+	  ;;
+    *) echo "?"
+esac
+echo $UPF1, $WIFI, $DHCP
+
+DATE=`date '+%Y-%m-%d %H:%M:%S'`
+echo "Example service started at ${DATE}" | systemd-cat -p info
+COUNTER=0
+SLEEP=20
+UPF1_SERVER="172.32.3.103"
+UPF2_SERVER="172.32.4.103"
+STATUS_CHANGE=true
+UPF1=true
+
+function atcmdforreconn(){
+    echo "Re-Connect 5G"
+    echo  -ne "AT\r">/dev/ttyUSB1
+    sleep 1
+	# Turn on airplane mode
+    echo  -ne "AT+CFUN=0\r">/dev/ttyUSB1
+    sleep 3
+    # Turn off airplane mode
+    echo  -ne "AT+CFUN=1\r">/dev/ttyUSB1
+    sleep 3
+    echo  -ne "AT+CIMI?\r">/dev/ttyUSB1
+    sleep 1
+    #echo  -ne "AT+CPIN?\r">/dev/ttyUSB1
+    #sleep 1
+    #echo  -ne "AT+GTUSIM?\r">/dev/ttyUSB1
+    #sleep 1
+    echo  -ne "AT+COPS?\r">/dev/ttyUSB1
+    sleep 3
+    # Call
+    echo  -ne "AT\$QCRMCALL=1,1\r">/dev/ttyUSB1
+    sleep 3
+}
+
+
+## for demo config only ##
+if [ "$CONFIG" -gt "0" ]; then
+	iptables -P INPUT ACCEPT
+	iptables -P FORWARD ACCEPT
+	iptables -P OUTPUT ACCEPT
+	iptables -t nat -F
+	iptables -t filter -F
+	iptables -t mangle -F
+	iptables -F
+	iptables -X
+
+	sudo echo 1 > /proc/sys/net/ipv4/ip_forward
+	iptables -A FORWARD -s 192.168.1.0/24 -j ACCEPT
+	iptables -A FORWARD -d 192.168.1.0/24 -j ACCEPT
+	iptables -t nat -A POSTROUTING -o usb0 -j MASQUERADE
+fi
+## for demo config only ##
+
+
+## reset 5G driver to gobinet ##
+echo "Update usbnet driver"
+while [ ! -d /sys/class/net/usb0 ]
+do
+    echo "Interface not found ... "
+    modprobe -r qmi_wwan
+    sleep 1
+    modprobe -r GobiNet
+    sleep 1
+    modprobe usbnet
+    sleep 1
+    modprobe GobiNet
+    sleep 5
+done
+echo "Update driver DONE"
+sleep 1
+## reset 5G driver to gobinet ##
+
+
+## init 5G config ##
+echo "Setup UPF config"
+sudo echo  -ne "AT\r">/dev/ttyUSB1
+sleep 1
+sudo echo  -ne "AT+GTSET=\"5GSACTR\",1\r">/dev/ttyUSB1
+sleep 1
+sudo echo  -ne "AT+GTACT=14,,,5078\r">/dev/ttyUSB1
+sleep 1
+if [ "$UPF1" = true ]; then
+    sudo echo  -ne "AT+CGDCONT=1,\"IP\",\"inventec.net\"\r">/dev/ttyUSB1    		# UPF 1 (Demo config 1,3)
+else
+    sudo echo  -ne "AT+CGDCONT=1,\"IP\",\"dnn001001012345674\"\r">/dev/ttyUSB1		# UPF 2 (Demo config 4,5)
+fi
+sleep 1
+echo "Init 5G config Done"
+## init 5G config ##
+if [ "$DHCP" = true ]; then
+    sudo systemctl start isc-dhcp-server.service
+fi
+
+if [ "$WIFI" = true ]; then
+    WIFIDEV=$(iw dev | awk '$1=="Interface"{print $2}')
+    ifconfig $WIFIDEV 192.168.1.1
+    rfkill unblock wifi
+    nohup sudo hostapd /etc/hostapd/hostapd.conf &
+    echo "wifi interface to 192.168.1.1 and dhcp on"
+fi
+
+if [ "$DHCP" = true ]; then
+    sudo systemctl restart isc-dhcp-server.service
+fi
+
+
+## Start Service ##
+while :
+do
+# Get 5G IP
+ip4_usb0=$(/sbin/ip -o -4 addr list usb0 | awk '{print $4}' | cut -d/ -f1)
+# Check 5G is UP or Down
+if [ -z $ip4_usb0 ]
+then
+    # 5G is Down
+	SLEEP=20
+    if [ "$STATUS_CHANGE" = true ]; then
+        echo "5G is Down, re-try ... ",$COUNTER
+    fi
+    COUNTER=$((COUNTER+1))
+    atcmdforreconn	# Re-Connect
+else
+    # 5G is UP
+	SLEEP=60
+    if [ "$STATUS_CHANGE" = true ]; then
+        echo "Get 5G IP :",$ip4_usb0;
+		# Set route to traffic server 
+		sudo route add -host 172.32.3.103 usb0
+		sudo route add -host 172.32.4.103 usb0
+    fi
+    # check 5G connection can ping to  traffic server
+    ping -q -c 1 -w 1 $UPF1_SERVER 2>&1 > /dev/null  && result=0 || result=1
+	ping -q -c 1 -w 1 $UPF2_SERVER 2>&1 > /dev/null  && result2=0 || result2=1
+    if [ "$result" -eq "0" ] || [ "$result2" -eq "0" ]; then
+        STATUS_CHANGE=false
+        echo "5G Connection is Up.",$ip4_usb0
+    else
+		echo "5G connection  is DOWN."
+		STATUS_CHANGE=true
+		atcmdforreconn	# Re-Connect
+    fi
+    COUNTER=0
+fi
+
+echo ""
+sleep $SLEEP;
+    
+done
+## End Service ##

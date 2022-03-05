@@ -1,0 +1,57 @@
+##
+## Settings (only do once)
+##
+
+# Copy Files to Base DIR : /opt/fibocom_ubuntu/
+sudo cp fibocom_ubuntu/ /opt -r 
+cd /opt/fibocom_ubuntu
+
+# Install libraries 
+sudo sh install_libs.sh
+
+# Install GobiNet  
+sudo sh install_gobi.sh
+
+# Reload GobiNet Driver after bootup
+sudo crontab -e
+@reboot sh /opt/fibocom_ubuntu/reload_driver.sh
+
+# mmcli enable debug mode
+sudo cp ModemManager.service /lib/systemd/system/ModemManager.service
+
+##
+## Service 
+##
+
+sudo cp service/*.service /etc/systemd/system/
+sudo systemctl enable e200_info
+
+# Setting Auto start service after bootup
+sudo crontab -e
+@reboot sudo systemctl start e200_info
+
+# Log path 
+cd /opt/fibocom_ubuntu/service/log
+
+## reboot and test the service is work ##
+
+
+##
+## Operations 
+##
+
+cd /opt/fibocom_ubuntu/service
+# Set Config : SET_N79, or SET_N78
+sudo python3 sendAT.py -e SET_N79
+
+# Check Connection status
+sudo python3 sendAT.py -e CHECK
+
+# CFUN=0 & CFUN=1
+sudo python3 sendAT.py -e RESTART
+
+# CFUN=15
+sudo python3 sendAT.py -e RESET
+
+# AT COMMAND
+sudo python3 sendAT.py -c [AT COMMAND]

@@ -1,0 +1,11 @@
+[Unit]
+Description=Get Modem by AT Command.
+
+[Service]
+Type=simple
+ExecStart=/bin/bash /opt/fibocom_ubuntu/service/get_modem_info.sh
+ExecStopPost=/bin/bash /opt/fibocom_ubuntu/service/stop_modem_info.sh
+User=root
+
+[Install]
+WantedBy=multi-user.target
